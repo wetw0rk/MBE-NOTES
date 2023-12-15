@@ -1,0 +1,86 @@
+MAIN :
+
+  Before we enter the switch statement a call is made to _Znaj@plt which allocates a fixed size of 0x20 bytes. If we look at this in GDB,
+  using GEF we can see that this is actaully 0x28 bytes. For my notes sake I'll call this chunk ppHVar2.
+
+CASE 3:
+
+ +---------------------------------------------------------------------------------------------------------------------------------+
+ | void do_find_item / _Z12do_find_itemPP7HashSetIi8hash_numE(param_1=>ppHvar2)                                                    |
+ +---------------------------------------------------------------------------------------------------------------------------------+
+ | 0x0804927c   0 ->  53 | Print "Which lockbox?: " and obtain an integer from the user and store it in [ebp-0x14]                 | 1)
+ +-----------------------+---------------------------------------------------------------------------------------------------------+
+ | 0x080492b4  56 ->  66 | Check if the integer obtained is negative, if so jump +68. Then check that the integer is less than 8,  | 2)
+ |                       | if it is jump +109.                                                                                     |
+ +-----------------------+---------------------------------------------------------------------------------------------------------+
+ | 0x080492c0  68 -> 104 | Print "Invalid set ID!" and return                                                                      |
+ +-----------------------+---------------------------------------------------------------------------------------------------------+
+ | 0x080492e9 109 -> 134 | Print "Item value: " and obtain an integer from the user and store it in [ebp-0x10]                     | 3)
+ +-----------------------+---------------------------------------------------------------------------------------------------------+
+ | 0x08049305 137 -> 159 | This is going to be a little hard to follow so I will try to describe it as best as possible. First we  | 4)
+ |                       | get an offset based on the lockbox (e.g 1 = 4), then we offset into the heap_chunk passed into this     |
+ |                       | function. Whatever is stored at heap_chunk+(offset) is then stored in EAX (this should be another heap  |
+ |                       | chunk prevously allocated of size 0x18). We then move what is stored in this heap chunk into EAX again  |
+ |                       | (should be 0x8049aa8 -> _ZTV7HashSetIi8hash_numE). We then offset + 0xc in this new address. Meaning,   |
+ |                       | EAX will now point to 0x08049ab4 or _ZN7HashSetIi8hash_numE4findEi.                                     |
+ |                       |                                                                                                         |
+ |                       | EAX = _ZN7HashSetIi8hash_numE4findEi                                                                    |
+ +-----------------------+---------------------------------------------------------------------------------------------------------+
+ | 0x0804931d 161 -> 188 | Load param_1 into EDX (heap chunk), then offset at the chunk +(lockbox integer * 4). Once offset move   ]--+- 5)
+ |                       | whatever is stored in the heap chunk offset into EDX (should be the heap chunk of size 0x18). We then   |  |
+ |                       | make a call to EAX (_ZN7HashSetIi8hash_numE4findEi) using the heap chunk as arg1 and item value integer |  |
+ |                       | as arg2                                                                                                 |  |
+ |                       |                                                                                                         |  |
+ |                       | call eax / _ZN7HashSetIi8hash_numE4findEi(heap_chunk, item value)                                       |  |
+ +-----------------------+---------------------------------------------------------------------------------------------------------+  |
+ | 0x0804933a 192 -> 235 | Move the results from _ZN7HashSetIi8hash_numE4findEi into [ebp-0xc] (should be zero). If the return val |  |
+ |                       | is not equal to 0xffffffff jump +237. Otherwise print "Item not found!" and return / exit.              |  |
+ +-----------------------+---------------------------------------------------------------------------------------------------------+  |
+ | 0x08049369 237 -> 268 | Print "Item Found"                                                                                      +---- 6)
+ +-----------------------+---------------------------------------------------------------------------------------------------------+  |
+ | 0x0804938d 273 -> 295 | Load the heap chunk from param_1 at offset +(lockbox*4). Move what is stored at the base of the chunk   +---- 7)
+ |                       | into into EAX (another heap chunk of size 0x18). Then move what is stored in the new chunk into EAX     |  |
+ |                       | this should be a pointer to _ZTV7HashSetIi8hash_numE. Then offset into this pointer +0x10 EAX should be |  |
+ |                       | 0x08049ab8. Then move what is stored here into EAX _ZN7HashSetIi8hash_numE3getEj.                       |  |
+ |                       |                                                                                                         |  |
+ |                       | EAX = _ZN7HashSetIi8hash_numE3getEj                                                                     |  |
+ +-----------------------+---------------------------------------------------------------------------------------------------------+  |
+ | 0x080493a5 297 -> 324 | We load the heap_chunk (param_1) and offset +(lockbox*4). Then we move what is stored at this offset in +---- 8)
+ |                       | the chunk into EDX (another heap chunk of size 0x18). After this we make a call to EAX with arg1 being  |  |
+ |                       | the heap chunk and arg2 being what was returned from +161 (0)                                           ]-+|
+ |                       |                                                                                                         | ||
+ |                       | call eax / _ZN7HashSetIi8hash_numE3getEj(heap chunk, (*+161 call eax))                                  | ||
+ +-----------------------+---------------------------------------------------------------------------------------------------------+ ||
+ | 0x080493c2 326 -> 354 | printf("lockbox[%d] = %d\n", index, <whatever was returned from prevous call in +297>) and return       +---- 9)
+ +-----------------------+---------------------------------------------------------------------------------------------------------+ ||
+                                                                                                                                     ||
+ +---------------------------------------------------------------------------------------------------------------------------------+ ||
+ | <undefined or int?> get / _ZN7HashSetIi8hash_numE3getEj(param_1=>heap_chunk, param_2=>int x=>return from that other function)   |<+|
+ +---------------------------------------------------------------------------------------------------------------------------------+  |
+ | 0x08049692  0 -> 58 | load param_1, then grab what is stored at offset 4 of param_1 (heap_chunk) into EAX. This should be the   |  |
+ |                     | max items we told the program we want to store. Compare param_2 to the max items we chose to allow. If it |  |
+ |                     | is lower (or rather if the max items > param_2) jump +60. Otherwise print "Invalid index" and return      |  |
+ +---------------------+-----------------------------------------------------------------------------------------------------------+  |
+ | 0x080496ce 60 -> 77 | Here we load param_1 and offset into it with whatever is at offset 0xc into EAX. We then shl param_2 and  |  |
+ |                     | add it to EAX. Which is the heap chunk of size X (remember however many we max allow determines the chunk |  |
+ |                     | size). We then move whatever is stored at this location into EAX and return.                              |  |
+ +---------------------+-----------------------------------------------------------------------------------------------------------+  |
+                                                                                                                                      |
+ +---------------------------------------------------------------------------------------------------------------------------------+  |
+ | uint find / _ZN7HashSetIi8hash_numE4findEi(param_1=>heap_chunk, param_2=>int x=>item_value)                                     |<-+
+ +---------------------------------------------------------------------------------------------------------------------------------+
+ | 0x08049660  0 -> 28 | This function has two local variables an int array local_10[3], and int uVar1. First we move param_2 into |
+ |                     | local_10[0], then we make a call to _ZNK8hash_numclERKj, arg1 being the heap chunk at offset 8, and arg2  |
+ |                     | being the local_10[3] array. _ZNK8hash_numclERKj simply returns param_2                                   |
+ +---------------------+-----------------------------------------------------------------------------------------------------------+
+ | 0x08049681 <+33>:    mov    edx,DWORD PTR [ebp+0x8] ; move the heap chunk into EDX (size 0x18)                                  |
+ | 0x08049684 <+36>:    mov    ecx,DWORD PTR [edx+0x4] ; move whatever is stored in the chunk at offset 4 (max items to store?)    |
+ | 0x08049687 <+39>:    mov    edx,0x0                 ; move 0x00 into EDX                                                        |
+ | 0x0804968c <+44>:    div    ecx                     ; EAX / ECX                                                                 |
+ | 0x0804968e <+46>:    mov    eax,edx                 ; move EDX into EAX (remainder)                                             |
+ | 0x08049690 <+48>:    leave                          ;                                                                           |
+ | 0x08049691 <+49>:    ret                            ;                                                                           |
+ +---------------------------------------------------------------------------------------------------------------------------------+
+ | So this function will return the remainder of the div instruction. If there is no remainder 0 will be returned                  |
+ +---------------------------------------------------------------------------------------------------------------------------------+
+

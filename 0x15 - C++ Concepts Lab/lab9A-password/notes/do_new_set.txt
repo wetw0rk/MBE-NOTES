@@ -1,0 +1,54 @@
+MAIN :
+
+  Before we enter the switch statement a call is made to _Znaj@plt which allocates a fixed size of 0x20 bytes. If we look at this in GDB,
+  using GEF we can see that this is actaully 0x28 bytes. For my notes sake I'll call this chunk ppHVar2.
+
+CASE 1:
+
+ +---------------------------------------------------------------------------------------------------------------------------------+
+ | void do_new_set / _Z10do_new_setPP7HashSetIi8hash_numE(param_1=>ppHvar2)                                                        |
+ +---------------------------------------------------------------------------------------------------------------------------------+
+ | 0x080490d3   0 -> 47  | Print "Which lockbox do you want?: " and obtain an integer from the user and store it in [ebp-0x10]     | 1)
+ +-----------------------+---------------------------------------------------------------------------------------------------------+
+ | 0x08049105  50 -> 92  | If the integer sent was a negative number, print "Invalid set ID!" and return. Otherwise jump +97       | 2)
+ +-----------------------+---------------------------------------------------------------------------------------------------------+
+ | 0x08049134  97 -> 139 | Check if the integer sent (lockbox) is less than 8, if it is jump +141. Otherwise print "No more room!" | 3)
+ |                       | and return                                                                                              |
+ +-----------------------+---------------------------------------------------------------------------------------------------------+
+ | 0x08049160 141 -> 166 | Print "How many items will you store?: " and get a int from the user and store it in [ebp-0xc]          | 4)
+ +-----------------------+---------------------------------------------------------------------------------------------------------+
+ | 0x0804917c 169 -> 176 | Call _Znwj@plt (HashSet), and allocate 0x10 bytes on the heap, in GEF its actaully 0x18 bytes           | 5)
+ +-----------------------+---------------------------------------------------------------------------------------------------------+
+ | 0x08049188 181 -> 193 | Call _ZN7HashSetIi8hash_numEC2Ej (HashSet), with two arguments. Arguments being an allocated heap chunk | 6) +-+
+ |                       | from +169, and the items integer from +141. _ZN7HashSetIi8hash_numEC2Ej will return nothing.            |      |
+ +-----------------------+---------------------------------------------------------------------------------------------------------+      |
+ | 0x08049199 198 -> 215 | Offset +4 from the heap chunk ppHVar2 (passed into this function), and move the newly allocated chunk   | 7)   |
+ |                       | into it. Then return.                                                                                   |      |
+ +-----------------------+---------------------------------------------------------------------------------------------------------+      |
+ | 0x080491ac <+217>:   mov    esi,eax                        | Not sure how we reach this code block...                           |      |
+ | 0x080491ae <+219>:   mov    DWORD PTR [esp],ebx            |                                                                    |      |
+ | 0x080491b1 <+222>:   call   0x8048e10 <_ZdlPv@plt>         |                                                                    |      |
+ | 0x080491b6 <+227>:   mov    eax,esi                        |                                                                    |      |
+ | 0x080491b8 <+229>:   mov    DWORD PTR [esp],eax            |                                                                    |      |
+ | 0x080491bb <+232>:   call   0x8048f20 <_Unwind_Resume@plt> |                                                                    |      |
+ +---------------------------------------------------------------------------------------------------------------------------------+      |
+ | 0x080491c0 237 -> 243 | return code                                                                                             | 8)   |
+ +-----------------------+---------------------------------------------------------------------------------------------------------+      |
+                                                                                                                                          |
+ +---------------------------------------------------------------------------------------------------------------------------------+      |
+ | void HashSet / _ZN7HashSetIi8hash_numEC2Ej(param1=>heap_chunk, param2=>int x)                                                   |      |
+ +---------------------------------------------------------------------------------------------------------------------------------+      |
+ | 0x080495dc  0 -> 9  | Move a pointer to _ZTV7HashSetIi8hash_numE / 0x8049aa8 into the heap chunk at offset 0                    | 1) <-+
+ +---------------------+-----------------------------------------------------------------------------------------------------------+
+ | 0x080495eb 15 -> 21 | Move the integer at offset 4 of the heap chunk                                                            | 2)
+ +---------------------+-----------------------------------------------------------------------------------------------------------+
+ | 0x080495f4 24 -> 37 | Compare the integer to 0x1fc00000, if the integer is larger we jump to +39. Otherwise before jumping +44  | 3)
+ |                     | we set argv1 before calling _Znaj@plt (heap allocator). argv1 is set to x shifted left twice.             |
+ +---------------------+-----------------------------------------------------------------------------------------------------------+
+ | 0x08049603 39       | Set argv1 to 0xffffffff before calling _Znaj@plt (heap allocator),                                        |
+ +---------------------+-----------------------------------------------------------------------------------------------------------+
+ | 0x08049608 44 -> 47 | Call _Znaj@plt(x shifted left twice), so say we sent 3 an allocation of 0xc is made instead of 3          | 4)
+ +---------------------+-----------------------------------------------------------------------------------------------------------+
+ | 0x08049610 52 -> 59 | Move the newly made allocation / heap chunk into the original heap chunk (param_1) at offset 0xc then ret | 5)
+ +---------------------+-----------------------------------------------------------------------------------------------------------+
+

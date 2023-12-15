@@ -1,0 +1,78 @@
+
+1. Segmentation fault when selecting option 2, lockbox 2, and any item
+     do_new_set(ppHVar2) -> call _Z11do_add_itemPP7HashSetIi8hash_numE
+
+2. When calling do_new_set(), any lockbox over 7 spits the error No more room!
+
+3. When calling do_new_set(), if we request to store 1094795585 bytes we get a Segmentation fault
+
+
+MAIN :
+
+  Before we enter the switch statement a call is made to _Znaj@plt which allocates a fixed size of 0x20 bytes. If we look at this in GDB,
+  using GEF we can see that this is actaully 0x28 bytes. For my notes sake I'll call this chunk ppHVar2.
+
+CASE 4:
+
+
+
+   ============================================================================================================================================================
+                                                                          RUN 1                                               RUN 2 (1,1,5 then 4,1,4,1
+   ============================================================================================================================================================
+   0x08049433 <+84>:	mov    eax,DWORD PTR [ebp-0xc] ; move the integer (set) into EAX                  | move the integer (set) into EAX
+   0x08049436 <+87>:	lea    edx,[eax*4+0x0]         ; since EAX is 1 EDX will be 4                     | since EAX is 1 EDX will be 4
+   0x0804943d <+94>:	mov    eax,DWORD PTR [ebp+0x8] ; load CHUNK 1 into EAX                            | load CHUNK 1 into EAX
+   0x08049440 <+97>:	add    eax,edx                 ; offset CHUNK 1, EAX should point to "CHUNK 2"    | offset CHUNK 1, EAX should point to "CHUNK 2"
+   0x08049442 <+99>:	mov    eax,DWORD PTR [eax]     ; make EAX "CHUNK 2"                               | make EAX "CHUNK 2"
+   0x08049444 <+101>:	test   eax,eax                 ;                                                  |
+   0x08049446 <+103>:	je     0x8049476 <+151>        ; THE JUMP IS NOT TAKEN                            | THE JUMP IS NOT TAKEN
+   0x08049448 <+105>:	mov    eax,DWORD PTR [ebp-0xc] ; move the integer (set) into EAX                  | move the integer (set) into EAX
+   0x0804944b <+108>:	lea    edx,[eax*4+0x0]         ; EDX should now be 4                              | EDX should now be 4
+   0x08049452 <+115>:	mov    eax,DWORD PTR [ebp+0x8] ; load CHUNK 1 into EAX                            | load CHUNK 1 into EAX
+   0x08049455 <+118>:	add    eax,edx                 ; offset CHUNK 1, EAX should point to "CHUNK 2"    | offset CHUNK 1, EAX should point to "CHUNK 2"
+   0x08049457 <+120>:	mov    eax,DWORD PTR [eax]     ; make EAX "CHUNK 2"                               | make EAX "CHUNK 2"
+   0x08049459 <+122>:	mov    eax,DWORD PTR [eax]     ; make EAX what is in "CHUNK 2" (0x08049aa8)       | make EAX what is in "CHUNK 2" (0x091cb078)
+   0x0804945b <+124>:	add    eax,0x4                 ; offset EAX+4 (EAX = 0x08049aac)                  | offset EAX+4 (EAX = 0x091cb07c)
+   0x0804945e <+127>:	mov    eax,DWORD PTR [eax]     ; make EAX what EAX currently points to 0x0804971e | make EAX what EAX currently points to 0x19
+   ============================================================================================================================================================
+                                                                          RUN 1
+   ============================================================================================================================================================
+   0x08049460 <+129>:	mov    edx,DWORD PTR [ebp-0xc] ; move the integer (set) into EDX
+   0x08049463 <+132>:	lea    ecx,[edx*4+0x0]         ; since EDX is 1 ECX will be 4
+   0x0804946a <+139>:	mov    edx,DWORD PTR [ebp+0x8] ; load CHUNK 1 into EDX
+   0x0804946d <+142>:	add    edx,ecx                 ; offset CHUNK 1, EDX should point to "CHUNK 2"
+   0x0804946f <+144>:	mov    edx,DWORD PTR [edx]     ; make EDX "CHUNK 2"
+   0x08049471 <+146>:	mov    DWORD PTR [esp],edx     ; move EDX onto the stack
+   0x08049474 <+149>:	call   eax                     ; call HashSet::~HashSet+12 / _ZN7HashSetIi8hash_numED0Ev("CHUNK 2")
+   0x08049476 <+151>:	leave  
+   0x08049477 <+152>:	ret    
+End of assembler dump.
+
+Eventually we reach this function below. When we return from calling _ZdaPv@plt EDX will contain a pointer that points to a heap address. This heap
+address will later be offset by 4 and whatever is stored there will be placed into EAX (which we call making us call 0x19).
+
+gef➤  disassemble 
+Dump of assembler code for function _ZN7HashSetIi8hash_numED2Ev:
+   0x080496e0 <+0>:	push   ebp
+   0x080496e1 <+1>:	mov    ebp,esp
+   0x080496e3 <+3>:	sub    esp,0x18
+   0x080496e6 <+6>:	mov    eax,DWORD PTR [ebp+0x8]
+   0x080496e9 <+9>:	mov    DWORD PTR [eax],0x8049aa8
+   0x080496ef <+15>:	mov    eax,DWORD PTR [ebp+0x8]
+   0x080496f2 <+18>:	mov    eax,DWORD PTR [eax+0xc]
+   0x080496f5 <+21>:	test   eax,eax
+   0x080496f7 <+23>:	je     0x8049707 <_ZN7HashSetIi8hash_numED2Ev+39>
+   0x080496f9 <+25>:	mov    eax,DWORD PTR [ebp+0x8]
+   0x080496fc <+28>:	mov    eax,DWORD PTR [eax+0xc]
+   0x080496ff <+31>:	mov    DWORD PTR [esp],eax
+   0x08049702 <+34>:	call   0x8048ed0 <_ZdaPv@plt>
+=> 0x08049707 <+39>:	mov    eax,0x0                                    ; x/x *$edx+4 => 0x00000019
+   0x0804970c <+44>:	test   eax,eax
+   0x0804970e <+46>:	je     0x804971b <_ZN7HashSetIi8hash_numED2Ev+59>
+   0x08049710 <+48>:	mov    eax,DWORD PTR [ebp+0x8]
+   0x08049713 <+51>:	mov    DWORD PTR [esp],eax
+   0x08049716 <+54>:	call   0x8048e10 <_ZdlPv@plt>
+   0x0804971b <+59>:	leave  
+   0x0804971c <+60>:	ret    
+End of assembler dump.
+

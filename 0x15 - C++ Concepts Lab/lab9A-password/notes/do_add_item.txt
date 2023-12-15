@@ -1,0 +1,45 @@
+MAIN :
+
+  Before we enter the switch statement a call is made to _Znaj@plt which allocates a fixed size of 0x20 bytes. If we look at this in GDB,
+  using GEF we can see that this is actaully 0x28 bytes. For my notes sake I'll call this chunk ppHVar2.
+
+CASE 2:
+
+ +---------------------------------------------------------------------------------------------------------------------------------+
+ | void do_add_item / _Z11do_add_itemPP7HashSetIi8hash_numE(param_1 => ppHvar2)                                                    |
+ +---------------------------------------------------------------------------------------------------------------------------------+
+ | 0x080491c7   0 -> 96  | Print "Which lockbox?: " and then grab an int from the user and store it in [ebp-0x10]. Then check that |
+ |                       | the integer obtained is NOT negative and NOT over 8. If both checks pass we jump +98. Otherwise we end  |
+ |                       | up +60. If we ended up at +60 "Invalid set ID!" would be printed and we would return from the call.     |
+ +-----------------------+---------------------------------------------------------------------------------------------------------+
+ | 0x08049229  98 -> 123 | Print "Item value: " and get an integer from the user and store it in [ebp-0xc].                        |
+ +-----------------------+---------------------------------------------------------------------------------------------------------+
+ | 0x08049245 126 -> 148 | We then load the heap chunk (param_1) and offset +(lockbox*4) from the base of the chunk. In this area  |
+ |                       | of the chunk we move what is stored within it into EAX (another chunk of size 0x18). From the new chunk |
+ |                       | move whatever is stored within it into EAX (0x08049aa8), and offset +8 (EAX now = 0x08049ab0). Then move|
+ |                       | whatever is stored there into EAX (_ZN7HashSetIi8hash_numE3addEi).                                      |
+ |                       |                                                                                                         |
+ |                       | EAX = _ZN7HashSetIi8hash_numE3addEi                                                                     |
+ +-----------------------+---------------------------------------------------------------------------------------------------------+
+ | 0x0804925d 150 -> 180 | We then once again load the heap chunk (param_1) and offset +(lockbox*4) from the base of the chunk. We |
+ |                       | then move whatever is stored here into EDX (another heap chunk of size 0x18). Then move the item value  |
+ |                       | integer into ECX. Then move these parameters onto the stack and make a call to EAX and return           |
+ |                       |                                                                                                         |
+ |                       | call eax / _ZN7HashSetIi8hash_numE3addEi(heap_chunk, (int) item_value)                                  |
+ +-----------------------+---------------------------------------------------------------------------------------------------------+---+
+                                                                                                                                       |
+ +---------------------------------------------------------------------------------------------------------------------------------+<--+
+ | void add / _ZN7HashSetIi8hash_numE3addEi(param_1=>heap_chunk, param_2=>int x / (item value))                                    |
+ +---------------------------------------------------------------------------------------------------------------------------------+
+ | 0x08049618  0 -> 28   | Using a local array local_14[3] we move param_2 into index 0. Then we load the heap chunk (size 0x18),  |
+ |                       | and offset into it +8. Ultimatley to make a call to _ZNK8hash_numclERKj with the chunk and int as args. |
+ |                       | This function will return int x as an int into EAX.                                                     |
+ +-----------------------+---------------------------------------------------------------------------------------------------------+
+ | 0x08049639 33 ->      | We then move the heap chunk (size 0x18), and move whatever is stored at offset 4 into ECX (this is the  |
+ |                       | max items we specified we would store). We then zero out EDX and call `div ecx`. Which will divide EAX  |
+ |                       | by ECX (int item_value / max things we can store). The remainder is then later stored in EAX. We then   |
+ |                       | move the remainder into local_14[0]. We then get whatever is stored at heap_chunk+0xc into EAX (empty   |
+ |                       | space).Then we move local_14[0] into EDX and shift it to the left twice (should be zero). Then we add   |
+ |                       | EAX to EDX (copying the heap chunk location into EDX), then copying the int x into EAX. Ultimately to   |
+ |                       | move the integer into the section in the heap chunk then return.                                        |
+ +-----------------------+---------------------------------------------------------------------------------------------------------+

@@ -1,0 +1,278 @@
+root@kali:~/MBE-COURSEWORK/0x15 - C++ Concepts Lab# python3 sploit.py 
+[+] Connecting to 192.168.159.129 on port 22: Done
+[*] lab9A@192.168.159.129:
+    Distro    Ubuntu 14.04
+    OS:       linux
+    Arch:     i386
+    Version:  3.16.0
+    ASLR:     Enabled
+[+] Starting remote process '/bin/sh' on 192.168.159.129: pid 1964
+[*] Allocating heap chunk 1
+[*] Allocating heap chunk 2
+[*] Freeing heap allocation
+Writing ready
+
+gdb -q -p $(pidof lab9A)
+b * 0x0804925b
+
+[*] Switching to interactive mode
+$ 4
+Which set?: $ 1
++----------- clark's improved item storage -----------+
+| [ -- Now using HashSets for insta-access to items!  |
+| 1. Open a lockbox                                   |
+| 2. Add an item to a lockbox                         |
+| 3. Get an item from a lockbox                       |
+| 4. Destroy your lockbox and items in it             |
+| 5. Exit                                             |
++-----------------------------------------------------+
+Enter choice: $ 2
+Which lockbox?: $ 1
+Item value: $ 1
+$  
+
+
+EIP  == E
+
+
+
+
+
+
+
+
+
+
+
+
+
+NOTES
+==================================================================
+
++----------- clark's improved item storage -----------+
+| [ -- Now using HashSets for insta-access to items!  |
+| 1. Open a lockbox                                   |
+| 2. Add an item to a lockbox                         |
+| 3. Get an item from a lockbox                       |
+| 4. Destroy your lockbox and items in it             |
+| 5. Exit                                             |
++-----------------------------------------------------+
+
+1
+Which lockbox do you want?: 1
+How many items will you store?: 50 # 20 seems to write where we want
+
+2
+1
+1094795585
+2
+1
+1111638594
+2
+1
+1128481603
+2
+1
+1145324612
+2
+1
+1162167621
+2
+1
+1179010630
+2
+1
+1195853639
+2
+1
+1212696648
+2
+1
+1229539657
+2
+1
+1347440720
+
+
+
+
+gef➤  search-pattern 0x41414141
+[+] Searching '\x41\x41\x41\x41' in memory
+[+] In '[heap]'(0x804c000-0x806d000), permission=rw-
+  0x804c0d4 - 0x804c0d8  →   "AAAA" 
+gef➤  search-pattern 0x42424242
+[+] Searching '\x42\x42\x42\x42' in memory
+[+] In '[heap]'(0x804c000-0x806d000), permission=rw-
+  0x804c0f8 - 0x804c0fc  →   "BBBB" 
+
+If we repeat and choose to allocate 20 we get this
+
+gef➤  search-pattern 0x41414141
+[+] Searching '\x41\x41\x41\x41' in memory
+[+] In '[heap]'(0x804c000-0x806d000), permission=rw-
+  0x804c05c - 0x804c060  →   "AAAA" 
+gef➤  search-pattern 0x42424242
+[+] Searching '\x42\x42\x42\x42' in memory
+[+] In '[heap]'(0x804c000-0x806d000), permission=rw-
+  0x804c080 - 0x804c084  →   "BBBB" 
+
+if we do it again with 50 we get this
+
+gef➤  search-pattern 0x41414141
+[+] Searching '\x41\x41\x41\x41' in memory
+[+] In '[heap]'(0x804c000-0x806d000), permission=rw-
+  0x804c0d4 - 0x804c0d8  →   "AAAA" 
+gef➤  search-pattern 0x42424242
+[+] Searching '\x42\x42\x42\x42' in memory
+[+] In '[heap]'(0x804c000-0x806d000), permission=rw-
+  0x804c0f8 - 0x804c0fc  →   "BBBB" 
+
+meaning we can "guess" where the write willl occur no we recall what ends up happening if we allocated
+0x18 bytes (1, 1, 5) and deleted it (4, 1). If we were to "re-delete" chunk 2 would no longer point to
+0x08049aa8 instead an address located on the heap 0x804c040. Then offset+4 0x804c044 which pointed to
+0x19 which later gave us EAX control.
+
+What can we do? Maybe we can use the above to write to 0x091cb07c?
+
+gef➤  search-pattern 0x44444444
+[+] Searching '\x44\x44\x44\x44' in memory
+[+] In '[heap]'(0x804c000-0x806d000), permission=rw-
+  0x804c078 - 0x804c07c  →   "DDDD" 
+
+
+CRASHES
+==================================================================
+
+1. Segmentation fault when selecting option 2, lockbox 2, and any item
+
+   0x08049242 <+123>:	mov    DWORD PTR [ebp-0xc],eax  ; EAX contains the "ITEM VALUE"
+   0x08049245 <+126>:	mov    eax,DWORD PTR [ebp-0x10] ; move the lockbox into EAX
+   0x08049248 <+129>:	lea    edx,[eax*4+0x0]          ; EDX = lockbox*4+0x00
+   0x0804924f <+136>:	mov    eax,DWORD PTR [ebp+0x8]  ; load CHUNK 1 into EAX
+   0x08049252 <+139>:	add    eax,edx                  ; offset into CHUNK 1 +(lockbox*4+0x00)
+   0x08049254 <+141>:	mov    eax,DWORD PTR [eax]      ; move whatever is stored at this area in memory pointed to by CHUNK 1 (normally chunk 2)
+=> 0x08049256 <+143>:	mov    eax,DWORD PTR [eax]      ; since 0x00 is not a valid address we crash
+
+?: So how to we control this
+
+
+2. When calling do_new_set(), if we request to store 1094795585 bytes we get a Segmentation fault
+
+3. After creating a set once and calling to delete the same set twice
+
+   0x08049452 <+115>:	mov    eax,DWORD PTR [ebp+0x8] ; move CHUNK 1 into EAX
+   0x08049455 <+118>:	add    eax,edx                 ; at EDX to EAX (should be 4 if set == 1) (EAX now == *CHUNK 2)
+   0x08049457 <+120>:	mov    eax,DWORD PTR [eax]     ; move CHUNK 2 into EAX
+   0x08049459 <+122>:	mov    eax,DWORD PTR [eax]     ; move whatever CHUNK 2 points to into EAX (0x00 on second run / 0x08049aa8 first)
+   0x0804945b <+124>:	add    eax,0x4                 ; add 4
+=> 0x0804945e <+127>:	mov    eax,DWORD PTR [eax]     ; EAX == 0x4 on second run, 0x08049aac on first
+
+4. First we create a lockboxthat can hold 9 items which will result in an allocation of 0x28 (same as chunk1). Then:
+
+2
+Which lockbox?: $ 1
+Item value: $ 1094795585
++----------- clark's improved item storage -----------+
+| [ -- Now using HashSets for insta-access to items!  |
+| 1. Open a lockbox                                   |
+| 2. Add an item to a lockbox                         |
+| 3. Get an item from a lockbox                       |
+| 4. Destroy your lockbox and items in it             |
+| 5. Exit                                             |
++-----------------------------------------------------+
+Enter choice: $ 1
+Which lockbox do you want?: $ 1
+How many items will you store?: $ 1094795585
+terminate called after throwing an instance of 'std::bad_alloc'
+  what():  std::bad_alloc
+
+
+HEAP ALLOCATIONS
+==================================================================
+
+  main()
+    CHUNK 1 -> call _Znaj@plt(0x20): which turns out to be 0x28 in memory (created once)
+ 
+  do_new_set()
+    CHUNK 2 -> call _Znwj@plt(0x10): which turns out to be 0x18 in memory (created evertime a new set is made)
+    CHUNK 3 -> call _Znaj@plt(0x??): controlled input / determined by how many items we choose to store
+
+
+   +==============+===================+===================+
+   | CHUNK 1 0x28 | *ptr 2 chunk 0x10 | *ptr 2 chunk 0x10 |
+   +==============+===================+===================+
+   0              4         |         8
+                            | 
+                            +--->+==============+============+=================================+============+================+
+                                 | CHUNK 2 0x10 | 0x08049aa8 | INT MAX ITEMS WE CHOSE TO STORE | 0x00000000 | *ptr 2 CHUNK 3 |--+
+                                 +==============+============+=================================+============+================+  |
+                                                0            4                                 8            12              16  |
+                        +-------------------------------------------------------------------------------------------------------+
+                        |
+                        V
+                        +===========+========+========+========+========+
+                        | CHUNK 3 X | ITEM 1 | ITEM 2 | ITEM 3 | ITEM 4 |
+                        +===========+========+========+========+========+
+                                    0        4        5        6        7
+
+
+HashSet
+==================================================================
+
+  0x08049aa8 -> HashSet::~HashSet+8
+  0x08049aac -> HashSet::~HashSet+12
+  0x08049ab0 -> HashSet::add
+  0x08049ab4 -> HashSet::find
+  0x08049ab8 -> HashSet::get 
+                           +-> HashSet::~HashSet+8(x)
+                           +-> operator.delete(x)
+
+CALL REG OPERATIONS
+==================================================================
+
+ do_add_item  -> 0x08049278 -> call eax (*HashSet::add+12)
+ do_find_item -> 0x08049338 -> call eax (*HashSet::find)
+ do_find_item -> 0x080493c0 -> call eax (*HashSet::get)
+ do_del_set   -> 0x08049474 -> call eax (*HashSet::~HashSet)
+
+FUNCTIONS
+==================================================================
+
+  main()
+
+    We allocate a heap chunk of 0x28 bytes. This is only done once when the program starts. Immediatley after we enter an infinite loop where
+    we have 5 options. do_new_set, do_add_item, do_find_item, do_del_set.
+
+  do_new_set()
+
+    No matter what anytime this function is called a heap allocation is made of 0x18 bytes. Within this allocation we store a pointer to a second
+    allocation. This second allocation is created based off whatever we wanted the new set max size to be - shifted left twice. So for example say
+    we wanted to allocate 0x3 bytes (0x3 << 2 = 0xc) we actaully end up calling _Znaj@plt arg1 being 0xc.
+ 
+    Restriction wise we can only store in lockboxes 1 through 7, and we cannot make an allocation / store more than 0x1fc00000 bytes. BUT this check
+    is performed before the "shl x,2" instruction.
+
+    WE CONTROL: Heap Allocation Sizes of "Chunk 3" aka the chunk to be stored at offset 0 of the original allocation of size 0x18 (CHUNK 2).
+
+  do_add_item()
+
+    We select the lockbox we want to modify, then we enter the item we would like to store. We then load chunk2 and extract 0x08049aa8 only
+    to be offset+8 which will make it point to 0x08049ab0. We then extract what 0x08049ab0 points to and place it in EAX (HashSet::add).
+
+    We then call EAX with arg1 being chunk2, and arg2 being the item value. Within HashSet::add, we simply put the integer into offset 0, 4, etc
+    of chunk 3.
+
+    WE CONTROL: What is stored within chunk 3.
+
+  do_find_item()
+
+    We select a lockbox we want to search, and we enter the item we're looking for. We then load chunk2 and extract 0x08049aa8 only to
+    be offset+0xc which will make it point to 0x08049ab4. We then extract what 0x08049ab4 points to and place it in EAX (HashSet::find).
+
+    We then call EAX with arg1 being chunk2 and arg2 beinf the item we're searching for. Within HashSet::find we just check if the item
+    if there? Ultimatley `div ecx` is called (EAX / ECX) and the remainder is returned (should be index). Index stored in [ebp-0xc]
+
+    We then load HashSet::get into EAX from chunk 2. Only to call it with arg1 chunk2 and arg2 index. In HashSet::get we load chunk3
+    from chunk2 and extract what we're looking for (unless we can't find it). EAX = what we're looking for NOT the index. 
+
+  do_del_set
